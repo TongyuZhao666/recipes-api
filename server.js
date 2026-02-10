@@ -7,29 +7,37 @@ app.use(bodyParser.json());
 
 const db = new sqlite3.Database('./recipes.db');
 
-// 404 for root
+// Root → 必须 404
 app.get('/', (req, res) => {
   res.sendStatus(404);
 });
 
-// GET all recipes
+// GET 全部
 app.get('/recipes', (req, res) => {
-  db.all("SELECT id, title, making_time, serves, ingredients, cost FROM recipes", [], (err, rows) => {
-    res.status(200).json({ recipes: rows });
-  });
+  db.all(
+    "SELECT id, title, making_time, serves, ingredients, cost FROM recipes",
+    [],
+    (err, rows) => {
+      res.status(200).json({ recipes: rows });
+    }
+  );
 });
 
-// GET recipe by id
+// GET by id（recipe 必须是数组）
 app.get('/recipes/:id', (req, res) => {
-  db.get("SELECT id, title, making_time, serves, ingredients, cost FROM recipes WHERE id = ?", [req.params.id], (err, row) => {
-    res.status(200).json({
-      message: "Recipe details by id",
-      recipe: row
-    });
-  });
+  db.get(
+    "SELECT id, title, making_time, serves, ingredients, cost FROM recipes WHERE id = ?",
+    [req.params.id],
+    (err, row) => {
+      res.status(200).json({
+        message: "Recipe details by id",
+        recipe: [row]   // ← 关键点
+      });
+    }
+  );
 });
 
-// POST create recipe
+// POST 创建
 app.post('/recipes', (req, res) => {
   const { title, making_time, serves, ingredients, cost } = req.body;
 
@@ -41,38 +49,50 @@ app.post('/recipes', (req, res) => {
   }
 
   db.run(
-    "INSERT INTO recipes (title, making_time, serves, ingredients, cost, created_at, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))",
+    `INSERT INTO recipes 
+     (title, making_time, serves, ingredients, cost, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
     [title, making_time, serves, ingredients, cost],
     function () {
-      db.get("SELECT id, title, making_time, serves, ingredients, cost FROM recipes WHERE id = ?", [this.lastID], (err, recipe) => {
-        res.status(200).json({
-          message: "Recipe successfully created!",
-          recipe: recipe
-        });
-      });
+      db.get(
+        "SELECT id, title, making_time, serves, ingredients, cost FROM recipes WHERE id = ?",
+        [this.lastID],
+        (err, recipe) => {
+          res.status(200).json({
+            message: "Recipe successfully created!",
+            recipe: [recipe]   // ← 关键点
+          });
+        }
+      );
     }
   );
 });
 
-// PATCH update recipe
+// PATCH 更新（这里不要数组！）
 app.patch('/recipes/:id', (req, res) => {
   const { title, making_time, serves, ingredients, cost } = req.body;
 
   db.run(
-    "UPDATE recipes SET title=?, making_time=?, serves=?, ingredients=?, cost=?, updated_at=datetime('now') WHERE id=?",
+    `UPDATE recipes 
+     SET title=?, making_time=?, serves=?, ingredients=?, cost=?, updated_at=datetime('now') 
+     WHERE id=?`,
     [title, making_time, serves, ingredients, cost, req.params.id],
     function () {
-      db.get("SELECT title, making_time, serves, ingredients, cost FROM recipes WHERE id = ?", [req.params.id], (err, recipe) => {
-        res.status(200).json({
-          message: "Recipe successfully updated!",
-          recipe: recipe
-        });
-      });
+      db.get(
+        "SELECT title, making_time, serves, ingredients, cost FROM recipes WHERE id = ?",
+        [req.params.id],
+        (err, recipe) => {
+          res.status(200).json({
+            message: "Recipe successfully updated!",
+            recipe: [recipe]   // ← 题目要求这里也是数组
+          });
+        }
+      );
     }
   );
 });
 
-// DELETE recipe
+// DELETE
 app.delete('/recipes/:id', (req, res) => {
   db.run("DELETE FROM recipes WHERE id = ?", [req.params.id], function () {
     if (this.changes === 0) {
