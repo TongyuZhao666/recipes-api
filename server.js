@@ -1,27 +1,35 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
+const bodyParser = require('body-parser');
 
 const app = express();
-app.use(express.json());
+app.use(bodyParser.json());
 
 const db = new sqlite3.Database('./recipes.db');
 
-// 初期化（表不存在时创建）
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS recipes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT,
-      making_time TEXT,
-      serves TEXT,
-      ingredients TEXT,
-      cost INTEGER
-    )
-  `);
+// 404 for root
+app.get('/', (req, res) => {
+  res.sendStatus(404);
 });
 
+// GET all recipes
+app.get('/recipes', (req, res) => {
+  db.all("SELECT id, title, making_time, serves, ingredients, cost FROM recipes", [], (err, rows) => {
+    res.status(200).json({ recipes: rows });
+  });
+});
 
-// ===================== POST /recipes =====================
+// GET recipe by id
+app.get('/recipes/:id', (req, res) => {
+  db.get("SELECT id, title, making_time, serves, ingredients, cost FROM recipes WHERE id = ?", [req.params.id], (err, row) => {
+    res.status(200).json({
+      message: "Recipe details by id",
+      recipe: row
+    });
+  });
+});
+
+// POST create recipe
 app.post('/recipes', (req, res) => {
   const { title, making_time, serves, ingredients, cost } = req.body;
 
@@ -32,94 +40,47 @@ app.post('/recipes', (req, res) => {
     });
   }
 
-  const sql = `
-    INSERT INTO recipes (title, making_time, serves, ingredients, cost)
-    VALUES (?, ?, ?, ?, ?)
-  `;
-
-  db.run(sql, [title, making_time, serves, ingredients, cost], function (err) {
-    if (err) {
-      return res.status(500).json({ message: "Database error" });
+  db.run(
+    "INSERT INTO recipes (title, making_time, serves, ingredients, cost, created_at, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))",
+    [title, making_time, serves, ingredients, cost],
+    function () {
+      db.get("SELECT id, title, making_time, serves, ingredients, cost FROM recipes WHERE id = ?", [this.lastID], (err, recipe) => {
+        res.status(200).json({
+          message: "Recipe successfully created!",
+          recipe: recipe
+        });
+      });
     }
-
-    const recipe = {
-      id: this.lastID,
-      title,
-      making_time,
-      serves,
-      ingredients,
-      cost
-    };
-
-    res.status(200).json({
-      message: "Recipe successfully created!",
-      recipe: recipe
-    });
-  });
+  );
 });
 
-
-// ===================== GET /recipes =====================
-app.get('/recipes', (req, res) => {
-  db.all("SELECT * FROM recipes", (err, rows) => {
-    if (err) {
-      return res.status(500).json({ message: "Database error" });
-    }
-
-    res.status(200).json({
-      recipes: rows
-    });
-  });
-});
-
-
-// ===================== GET /recipes/:id =====================
-app.get('/recipes/:id', (req, res) => {
-  db.get("SELECT * FROM recipes WHERE id = ?", [req.params.id], (err, row) => {
-    if (!row) {
-      return res.status(200).json({ message: "No recipe found" });
-    }
-
-    res.status(200).json({
-      message: "Recipe details by id",
-      recipe: row
-    });
-  });
-});
-
-
-// ===================== PATCH /recipes/:id =====================
+// PATCH update recipe
 app.patch('/recipes/:id', (req, res) => {
   const { title, making_time, serves, ingredients, cost } = req.body;
 
-  const sql = `
-    UPDATE recipes
-    SET title = ?, making_time = ?, serves = ?, ingredients = ?, cost = ?
-    WHERE id = ?
-  `;
-
-  db.run(sql, [title, making_time, serves, ingredients, cost, req.params.id], function () {
-    db.get("SELECT * FROM recipes WHERE id = ?", [req.params.id], (err, updatedRecipe) => {
-      res.status(200).json({
-        message: "Recipe successfully updated!",
-        recipe: updatedRecipe
+  db.run(
+    "UPDATE recipes SET title=?, making_time=?, serves=?, ingredients=?, cost=?, updated_at=datetime('now') WHERE id=?",
+    [title, making_time, serves, ingredients, cost, req.params.id],
+    function () {
+      db.get("SELECT title, making_time, serves, ingredients, cost FROM recipes WHERE id = ?", [req.params.id], (err, recipe) => {
+        res.status(200).json({
+          message: "Recipe successfully updated!",
+          recipe: recipe
+        });
       });
-    });
-  });
+    }
+  );
 });
 
-
-// ===================== DELETE /recipes/:id =====================
+// DELETE recipe
 app.delete('/recipes/:id', (req, res) => {
   db.run("DELETE FROM recipes WHERE id = ?", [req.params.id], function () {
-    res.status(200).json({
-      message: "Recipe successfully removed!"
-    });
+    if (this.changes === 0) {
+      return res.status(200).json({ message: "No Recipe found" });
+    }
+    res.status(200).json({ message: "Recipe successfully removed!" });
   });
 });
 
-
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT);
