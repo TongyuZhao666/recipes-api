@@ -1,30 +1,34 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
-const bodyParser = require('body-parser');
-const fs = require('fs');
 
 const app = express();
-app.use(bodyParser.json());
+app.use(express.json());
 
 const db = new sqlite3.Database('./recipes.db');
 
-// 初始化数据库
-const initSQL = fs.readFileSync('./sql/create.sql', 'utf8');
-db.exec(initSQL);
-
-// 访问根路径必须返回404（题目要求）
-app.get('/', (req, res) => {
-  res.status(404).send('Not Found');
+// 初期化（表不存在时创建）
+db.serialize(() => {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS recipes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT,
+      making_time TEXT,
+      serves TEXT,
+      ingredients TEXT,
+      cost INTEGER
+    )
+  `);
 });
 
 
-// ================= POST /recipes =================
+// ===================== POST /recipes =====================
 app.post('/recipes', (req, res) => {
   const { title, making_time, serves, ingredients, cost } = req.body;
 
   if (!title || !making_time || !serves || !ingredients || !cost) {
     return res.status(200).json({
-      message: "Recipe creation failed!"
+      message: "Recipe creation failed!",
+      required: "title, making_time, serves, ingredients, cost"
     });
   }
 
@@ -35,52 +39,57 @@ app.post('/recipes', (req, res) => {
 
   db.run(sql, [title, making_time, serves, ingredients, cost], function (err) {
     if (err) {
-      return res.status(500).json({ message: "DB error" });
+      return res.status(500).json({ message: "Database error" });
     }
 
+    const recipe = {
+      id: this.lastID,
+      title,
+      making_time,
+      serves,
+      ingredients,
+      cost
+    };
+
     res.status(200).json({
-      recipe: {
-        id: this.lastID,
-        title,
-        making_time,
-        serves,
-        ingredients,
-        cost
-      }
+      message: "Recipe successfully created!",
+      recipe: recipe
     });
   });
 });
 
 
-// ================= GET /recipes =================
+// ===================== GET /recipes =====================
 app.get('/recipes', (req, res) => {
-  db.all('SELECT * FROM recipes', [], (err, rows) => {
+  db.all("SELECT * FROM recipes", (err, rows) => {
     if (err) {
-      return res.status(500).json({ message: "DB error" });
+      return res.status(500).json({ message: "Database error" });
     }
 
-    res.status(200).json({ recipes: rows });
+    res.status(200).json({
+      recipes: rows
+    });
   });
 });
 
 
-// ================= GET /recipes/:id =================
+// ===================== GET /recipes/:id =====================
 app.get('/recipes/:id', (req, res) => {
-  const id = req.params.id;
-
-  db.get('SELECT * FROM recipes WHERE id = ?', [id], (err, row) => {
-    if (err) {
-      return res.status(500).json({ message: "DB error" });
+  db.get("SELECT * FROM recipes WHERE id = ?", [req.params.id], (err, row) => {
+    if (!row) {
+      return res.status(200).json({ message: "No recipe found" });
     }
 
-    res.status(200).json({ recipe: row });
+    res.status(200).json({
+      message: "Recipe details by id",
+      recipe: row
+    });
   });
 });
 
 
-// ================= PATCH /recipes/:id =================
+// ===================== PATCH /recipes/:id =====================
 app.patch('/recipes/:id', (req, res) => {
-  const id = req.params.id;
   const { title, making_time, serves, ingredients, cost } = req.body;
 
   const sql = `
@@ -89,28 +98,23 @@ app.patch('/recipes/:id', (req, res) => {
     WHERE id = ?
   `;
 
-  db.run(sql, [title, making_time, serves, ingredients, cost, id], function (err) {
-    if (err) {
-      return res.status(500).json({ message: "DB error" });
-    }
-
-    db.get('SELECT * FROM recipes WHERE id = ?', [id], (err, row) => {
-      res.status(200).json({ recipe: row });
+  db.run(sql, [title, making_time, serves, ingredients, cost, req.params.id], function () {
+    db.get("SELECT * FROM recipes WHERE id = ?", [req.params.id], (err, updatedRecipe) => {
+      res.status(200).json({
+        message: "Recipe successfully updated!",
+        recipe: updatedRecipe
+      });
     });
   });
 });
 
 
-// ================= DELETE /recipes/:id =================
+// ===================== DELETE /recipes/:id =====================
 app.delete('/recipes/:id', (req, res) => {
-  const id = req.params.id;
-
-  db.run('DELETE FROM recipes WHERE id = ?', [id], function (err) {
-    if (err) {
-      return res.status(500).json({ message: "DB error" });
-    }
-
-    res.status(200).json({ message: "Recipe successfully removed!" });
+  db.run("DELETE FROM recipes WHERE id = ?", [req.params.id], function () {
+    res.status(200).json({
+      message: "Recipe successfully removed!"
+    });
   });
 });
 
