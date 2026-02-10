@@ -7,7 +7,7 @@ app.use(bodyParser.json());
 
 const db = new sqlite3.Database('./recipes.db');
 
-/* ========= 正确初始化数据库（关键） ========= */
+/* ========= 初始化数据库（Render 必须这样做） ========= */
 db.serialize(() => {
   db.run(`
     CREATE TABLE IF NOT EXISTS recipes (
@@ -32,7 +32,7 @@ db.serialize(() => {
   });
 });
 
-/* ========= Root 必须 404 ========= */
+/* ========= 根路径必须 404 ========= */
 app.get('/', (req, res) => {
   res.status(404).send('Not Found');
 });
